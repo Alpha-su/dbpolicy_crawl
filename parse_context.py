@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# @Time    : 2021/2/4 下午4:56
+# @Author  : Alphasu
+# @Function: 利用他人的 网页正文解析工具
 import random
 from urllib import request
 from bs4 import BeautifulSoup
@@ -7,6 +12,7 @@ import math
 import posixpath
 import bs4
 from urllib.parse import urljoin
+import utils
 
 
 def _take_out_list(Data, target_type):
@@ -85,22 +91,6 @@ def get_houzhui(str):
         return str2
     else:
         return ''
-
-
-def remove_js_css(content):
-    """ remove the the javascript and the stylesheet and the comment content
-    (<script>....</script> and <style>....</style> <!-- xxx -->) """
-    r = re.compile(r'<script.*?</script>', re.I | re.M | re.S)
-    s = r.sub('', content)
-    r = re.compile(r'<style.*?</style>', re.I | re.M | re.S)
-    s = r.sub('', s)
-    r = re.compile(r'<link.*?>', re.I | re.M | re.S)
-    s = r.sub('', s)
-    r = re.compile(r'<meta.*?>', re.I | re.M | re.S)
-    s = r.sub('', s)
-    r = re.compile(r'<ins.*?</ins>', re.I | re.M | re.S)
-    s = r.sub('', s)
-    return s
 
 
 def remove_empty_line(content):
@@ -212,7 +202,7 @@ class MAIN_TEXT:
     
     def main(self):
         # 返回值的state，为0表示出错，为1表示正常，为2表示正文没有内容但有附件或图片
-        page1 = remove_js_css(str(self.text))
+        page1 = utils.remove_js_css(str(self.text))
         page1 = remove_empty_line(page1)
         bsobj = BeautifulSoup(page1, "html.parser")
         
@@ -489,8 +479,7 @@ class MAIN_TEXT:
 
 # 示例
 if __name__ == "__main__":
-    task = MAIN_TEXT(url=r"http://www.nhc.gov.cn/yzygj/s3590/202002/d5d3a75ab16a4028919ad5ce2f975d99.shtml",
-                     with_date=True)
+    task = MAIN_TEXT(url=r"http://www.nhc.gov.cn/yzygj/s3590/202002/d5d3a75ab16a4028919ad5ce2f975d99.shtml", with_date=True)
     print(task.main())
     # from R2 import Request
     # print(Request('http://amr.ah.gov.cn/public/11/913681.html').response.text)

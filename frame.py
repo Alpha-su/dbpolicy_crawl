@@ -1,67 +1,11 @@
-import asyncio
-import re
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# @Time    : 2021/2/4 下午4:56
+# @Author  : Alphasu
+# @Function: 解析网页frame，从网页frame中提取子链接
 from urllib.parse import urljoin
-from pyppeteer.errors import NetworkError
 from scrapy import Selector
-from datetime import date
-
-
-def get_chinese(attribute_name):
-    # 只提取里面的中文
-    if not attribute_name:
-        return ''
-    line = re.sub('[^\u4e00-\u9fa5]', '', str(attribute_name))
-    return line
-
-
-def search_date_time(string):
-    string = re.sub('[ \t\n]', '', string)  # 避免因网页格式而造成的失效
-    date_form = [
-        "(\d{4})[-|/.](\d{1,2})[-|/.](\d{1,2})",
-        "(\d{2})[-|/.](\d{1,2})[-|/.](\d{1,2})",
-        "(\d{4})年(\d{1,2})月(\d{1,2})日",
-        "(\d{2})年(\d{1,2})月(\d{1,2})日",
-    ]
-    for form in date_form:
-        result = re.search(form, string, re.S)
-        if result:
-            year = result.group(1)
-            if len(year) < 4:
-                if int(year) < 60:
-                    year = '20' + year
-                else:
-                    year = '19' + year
-            month = result.group(2)
-            if len(month) == 1:
-                month = '0' + month
-            day = result.group(3)
-            if len(day) == 1:
-                day = '0' + day
-            try:
-                date_obj = date(int(year), int(month), int(day))
-            except Exception:
-                return None
-            else:
-                if date_obj > date.today():
-                    return None
-                else:
-                    return year + '-' + month + '-' + day
-    return None
-
-
-def find_max_text(node):
-    # 从节点中选取最长字段（包括title属性）作为结果返回
-    max_text = node.xpath('./@title').extract_first()
-    if not max_text:
-        max_len = 0
-    else:
-        max_len = len(get_chinese(max_text))
-    for te in node.xpath('.//text()').extract():
-        len_te = len(get_chinese(te))
-        if len_te > max_len:
-            max_text = te
-            max_len = len_te
-    return max_text, max_len
+import utils
 
 
 def find_root_node(max_nodes, max_content, sec_nodes):
@@ -69,58 +13,6 @@ def find_root_node(max_nodes, max_content, sec_nodes):
         if max_content[i] in sec_nodes:
             return max_nodes[i]
     return None
-
-
-async def get_content(frame, retries=0):
-    if retries > 6:
-        return await frame.content()
-    else:
-        try:
-            return await frame.content()
-        except NetworkError:
-            await asyncio.sleep(1)
-            return await get_content(frame, retries + 1)
-
-
-def find_xpath_case(selector):
-    if selector.xpath('/html/body//*[text()="下一页" or text()="后一页" or text()="下页" or text()="后页" or text() ="后一页>>"]'):
-        # 可以按页码翻页，按页码翻页比按下一页翻页更稳定准确
-        xpath_case = 1
-    elif selector.xpath('/html/body//*[@title="下一页" or @title="后一页" or @title="下页"]'):
-        xpath_case = 4
-    elif selector.xpath('/html/body//a[text()=2]'):
-        xpath_case = 2
-    elif selector.xpath('/html/body//*[text()="[2]"]'):
-        xpath_case = 6
-    elif selector.xpath('/html/body//*[text()=2]'):
-        xpath_case = 3
-    elif selector.xpath('/html/body//*[text()="下一页>>" or text()="[下一页]"]'):
-        xpath_case = 5
-    elif selector.xpath('/html/body//*[text()=">>"]'):
-        xpath_case = 7
-    else:
-        xpath_case = 0
-    return xpath_case
-
-
-def from_xpath_case_to_xpath(xpath_case, page_num):
-    if xpath_case == 2:
-        return '/html/body//a[text() = {page_num}]'.format(page_num=str(page_num + 1))
-    elif xpath_case == 1:
-        return '/html/body//*[text()=\\"下一页\\" or text()=\\"后一页\\" or text()=\\"下页\\" or text()=\\"后页\\" or text(' \
-               ')=\\"后一页>>\\"] '
-    elif xpath_case == 3:
-        return '/html/body//*[text()={page_num}]'.format(page_num=str(page_num + 1))
-    elif xpath_case == 4:
-        return '/html/body//*[@title=\\"下一页\\" or @title = \\"后一页\\" or @title=\\"下页\\"]'
-    elif xpath_case == 5:
-        return '/html/body//*[text()=\\"下一页>>\\" or text()=\\"[下一页]\\"]'
-    elif xpath_case == 6:
-        return '/html/body//*[text() = \\"[{page_num}]\\"]'.format(page_num=str(page_num + 1))
-    elif xpath_case == 7:
-        return '/html/body//*[text()=\\">>\\"]'
-    else:
-        return None
 
 
 class Frame:
@@ -132,7 +24,7 @@ class Frame:
         self.selector = None
     
     async def init(self):  # 框架初始化
-        self.content = await get_content(self.raw_frame)
+        self.content = await utils.get_content(self.raw_frame)
         self.selector = Selector(text=self.content)
     
     def find_sub_url(self, date_in_detail):
@@ -155,7 +47,7 @@ class Frame:
             if not title:
                 continue  # find nothing
             else:
-                if len(get_chinese(title)) > 3:
+                if len(utils.get_chinese(title)) > 3:
                     # 如果是增量更新模式的话，这里还要跟数据库比对
                     ret_dict[title] = (sub_link, date)
         return ret_dict
@@ -164,7 +56,7 @@ class Frame:
         max_len, sec_len = 0, 0
         max_node, second_node = {}, {}
         for node in self.selector.xpath('//a'):
-            text, len_text = find_max_text(node)
+            text, len_text = utils.find_max_text(node)
             if len_text > max_len:
                 sec_len = max_len
                 max_len = len_text
@@ -196,7 +88,7 @@ class Frame:
             if not title:
                 continue  # find nothing
             else:
-                if len(get_chinese(title)) > 3:
+                if len(utils.get_chinese(title)) > 3:
                     ret_dict[title] = (sub_link, date)
         return ret_dict
     
@@ -204,6 +96,7 @@ class Frame:
     def solve_one_line(line, url, date_in_detail):
         """
         从单个信息行中寻找链接文本，地址和包含的时间
+        :param date_in_detail: 传入的date位置的配置文件
         :return:
         :param line: 信息行
         :param url: 当前url
@@ -216,7 +109,7 @@ class Frame:
         text_list = line.xpath('.//text()').extract()
         clean_list = [item.strip() for item in text_list if item.strip()]
         for content in clean_list:
-            date = search_date_time(content)
+            date = utils.search_date_time(content)
             if date:
                 break
         if (not date) and (not date_in_detail):  # 检验时间指标的完整性
@@ -239,7 +132,7 @@ class Frame:
                 sub_link = ''
             if not text_in_title:
                 title = text.strip()
-            elif len(get_chinese(text_in_title[0])) < len(get_chinese(text)):
+            elif len(utils.get_chinese(text_in_title[0])) < len(utils.get_chinese(text)):
                 title = text.strip()
             else:
                 title = text_in_title[0].strip()
@@ -250,7 +143,7 @@ class Frame:
         else:
             final_title = final_title_list[0]
             for title_text in final_title_list:
-                tmp1, tmp2 = get_chinese(title_text), get_chinese(final_title)
+                tmp1, tmp2 = utils.get_chinese(title_text), utils.get_chinese(final_title)
                 if len(tmp1) > len(tmp2):
                     final_title = title_text
             return final_title, tmp_dict[final_title], date  # title, sub_link,date

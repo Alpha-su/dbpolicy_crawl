@@ -1,90 +1,17 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# @Time    : 2021/2/4 下午5:01
+# @Author  : Alphasu
+# @Function: 网站爬取任务调度，即主要功能模块
 import asyncio
-import re
-import time
 from datetime import datetime
-from pprint import pprint
-from urllib.parse import urljoin
-
-import redis
 from scrapy import Selector
 import parse_context
-from R2 import Request
 from frame import Frame
-from frame import get_chinese, search_date_time, find_xpath_case, from_xpath_case_to_xpath, get_content
 import operator
 import copy
 from config import CRAWL_SPEED
-
-
-async def request_check(req):
-    # 请求过滤
-    if req.resourceType in ['image', 'media']:
-        await req.abort()
-    else:
-        await req.continue_()
-
-
-async def handle_dialog(dialog):
-    await dialog.dismiss()
-
-
-def wait_redis(db_redis, max_length=CRAWL_SPEED['Redis_Stack'], sleep_gap=CRAWL_SPEED['Redis_Delay']):
-    while True:
-        len_ = db_redis.scard('links')
-        if len_ >= max_length:
-            time.sleep(sleep_gap)
-            print("redis stack is full!", len_)
-        else:
-            break
-
-
-def find_xpath_case_in_frames(frame_list, index):
-    if not frame_list:
-        return 0
-    else:
-        for tmp_frame in [frame_list[index]] + frame_list:
-            case = find_xpath_case(tmp_frame.selector)
-            if case != 0:
-                return case
-    return 0
-
-
-def get_rank(data_dict):
-    # 用于判定文件完整性级别
-    if data_dict['main_text'] and len(data_dict['main_text']) > 20:
-        rank = 1
-    elif data_dict['attachment']:
-        rank = 2
-    elif data_dict['img']:
-        rank = 3
-    else:
-        rank = 4
-    if not data_dict['date']:
-        rank += 8
-    if data_dict['title'][-3:] == '...':
-        rank += 16
-    return rank
-
-
-def fulfill_title(title, selector):
-    # 自动化判断补全title
-    tmp_title = title[:-4]
-    be_solved_title = []  # 带筛选的标题
-    for tag in selector.xpath('//body//*'):
-        text = ''.join(tag.xpath('.//text()').extract()).strip()
-        if text.startswith(tmp_title):
-            be_solved_title.append(text)
-    if be_solved_title:
-        return min(be_solved_title, key=len)  # 注意min函数key的用法
-    else:
-        return title
-
-
-def init_redis():
-    pool = redis.ConnectionPool(host='localhost', port=6379, decode_responses=True, password='990211')
-    db_r = redis.Redis(connection_pool=pool)
-    return db_r
+import utils
 
 
 class Parser:
@@ -103,7 +30,6 @@ class Parser:
         self.title_pattern = config['title_pattern']
         self.browser = browser
         self.page = None
-        self.use_browser = False  # 控制是否用浏览器解析子链接
         self.mode = mode
         self.db = db
         self.max_page = 12000
@@ -111,9 +37,9 @@ class Parser:
         self.file_count = 0  # 统计该网页成功解析的子链接数
         self.error_info = list()  # 记录曾出现过的错误信息
         self.sub_url_in_db = self.get_sub_url_in_db()
-        self.db_redis = init_redis()
+        self.db_redis = utils.init_redis()
         self.xpath_case = 0  # 翻页规则
-    
+
     def get_sub_url_in_db(self):
         # 为了避免重复爬取，预加载已经爬取的内容
         ret_set = set()
@@ -125,7 +51,7 @@ class Parser:
             return ret_set
         else:
             return ret_set
-    
+
     async def wait_for_change(self, item_list, max_retries=0):
         retries_times = 0
         while True:
@@ -140,47 +66,7 @@ class Parser:
                     return
                 else:
                     await asyncio.sleep(1)
-    
-    @staticmethod
-    def remove_js_css(content):
-        #  remove the the javascript and the stylesheet and the comment content
-        #  (<script>....</script> and <style>....</style> <!-- xxx -->)
-        r = re.compile(r'<script.*?</script>', re.I | re.M | re.S)
-        s = r.sub('', content)
-        r = re.compile(r'<style.*?</style>', re.I | re.M | re.S)
-        s = r.sub('', s)
-        r = re.compile(r'<link.*?>', re.I | re.M | re.S)
-        s = r.sub('', s)
-        r = re.compile(r'<meta.*?>', re.I | re.M | re.S)
-        s = r.sub('', s)
-        r = re.compile(r'<ins.*?</ins>', re.I | re.M | re.S)
-        s = r.sub('', s)
-        return s
-    
-    @staticmethod
-    def find_img(url, domain):
-        image_list = []
-        img_li = domain.xpath('.//img[@src != ""]')
-        for img in img_li:
-            img_src = img.xpath('.//@src').extract_first()
-            image_list.append(urljoin(url, img_src))
-        return image_list
-    
-    @staticmethod
-    def find_attachment(url, domain):
-        attachment_list = []
-        a_list = domain.xpath('.//a[@href != "" and text() != ""]')
-        for a in a_list:
-            a_text = ''.join(a.xpath('.//text()').extract())
-            a_href = a.xpath('.//@href').extract_first().strip()
-            pattern1 = re.compile('(.doc|\.docx|\.pdf|\.csv|\.xlsx|\.xls|\.txt)')  # 找到文件后缀
-            result1 = pattern1.findall(a_text)
-            pattern2 = re.compile('附件')  # 找到附件字样
-            result2 = pattern2.findall(a_text)
-            if result1 or result2:
-                attachment_list.append(str(a_text) + '(' + str(urljoin(url, a_href)) + ')')
-        return attachment_list
-    
+
     def parse_struct_info(self, selector0):
         remove_list = ['稿源', '来源', '发布机构', '发布日期', '发文机关']
         if self.date_pattern:
@@ -190,7 +76,7 @@ class Parser:
                 date = ''
             else:
                 if isinstance(date_raw, str):
-                    date = search_date_time(date_raw)
+                    date = utils.search_date_time(date_raw)
                 else:
                     date = ''
         else:
@@ -200,7 +86,7 @@ class Parser:
             if 'text()' not in self.source_pattern:
                 self.source_pattern = self.source_pattern + '//text()'
             try:
-                source = get_chinese(''.join(selector0.xpath(self.source_pattern).extract()))
+                source = utils.get_chinese(''.join(selector0.xpath(self.source_pattern).extract()))
             except Exception:
                 source = ''
             else:
@@ -222,7 +108,7 @@ class Parser:
         else:
             title = ''
         return date, source, title
-    
+
     def parse_main_text(self, url, text):
         main_text, img_text, attachment_text = '', '', ''
         selector = Selector(text=text)
@@ -242,16 +128,16 @@ class Parser:
         else:
             main_text = ''.join(main_text_list)
             if len(main_text) < 100:
-                img_list = self.find_img(url, main_domain)
+                img_list = utils.find_img(url, main_domain)
                 img_text = ','.join(img_list)
-                attachment_list = self.find_attachment(url, main_domain)
+                attachment_list = utils.find_attachment(url, main_domain)
                 attachment_text = ','.join(attachment_list)
         if len(img_text) > 60000:
             img_text = ''
         if len(attachment_text) > 60000:
             attachment_text = ''
         return main_text, attachment_text, img_text
-    
+
     def save_to_data(self, data_dict):
         max_id = self.db.select('api_links', 'max(id)', fetch_one=True)['max(id)']
         if not max_id:
@@ -266,12 +152,13 @@ class Parser:
         else:
             res = self.db.insert_one('api_links', ins_to_link)
             if res:
-                rank = get_rank(data_dict)
-                ins_to_details = {'main_text': data_dict['main_text'], 'attachment': data_dict['attachment'], 'img': data_dict['img'], 'rank': rank,
+                rank = utils.get_rank(data_dict)
+                ins_to_details = {'main_text': data_dict['main_text'], 'attachment': data_dict['attachment'], 'img': data_dict['img'],
+                                  'rank': rank,
                                   'links_id': new_id}
                 if self.db.insert_one('api_details', ins_to_details):
                     self.file_count += 1
-    
+
     async def parse_detail(self, sub_links, frame_list, index):
         for title in list(sub_links.keys()):
             self.sub_url_already_crawl[title] = sub_links[title]  # 无论结果如何都要存进去，避免僵死
@@ -303,21 +190,22 @@ class Parser:
                             break
                         else:
                             await asyncio.sleep(1)
-                    content = await get_content(pages[-1])
+                    content = await utils.get_content(pages[-1])
                     sub_url = pages[-1].url
                     await pages[-1].close()
                 else:
                     await asyncio.sleep(6)
                     pages = await self.browser.pages()
                     if len(pages) == 2:
-                        content = await get_content(pages[-1])
+                        content = await utils.get_content(pages[-1])
                         sub_url = pages[-1].url
                         await pages[-1].close()
                     else:
-                        content = await get_content(self.page)
+                        content = await utils.get_content(self.page)
                         sub_url = self.page.url
-                        await asyncio.wait([self.page.goBack(), self.page.waitForXPath(xpath=xpath, timeout=CRAWL_SPEED['CLICK_SUB_URL_MAX_DELAY'])])
-                request_text = self.remove_js_css(content)
+                        await asyncio.wait(
+                            [self.page.goBack(), self.page.waitForXPath(xpath=xpath, timeout=CRAWL_SPEED['CLICK_SUB_URL_MAX_DELAY'])])
+                request_text = utils.remove_js_css(content)
                 selector = Selector(text=request_text)
                 frame_list = await self.get_frame()
             date, source, title_in_page = self.parse_struct_info(selector)
@@ -325,12 +213,12 @@ class Parser:
                 date = sub_links[title][1]
             if title_in_page:  # 为title上双保险
                 save_title = title_in_page
-                if (not save_title) or save_title[-3:] == '...' or (len(get_chinese(save_title)) < len(get_chinese(title))):
+                if (not save_title) or save_title[-3:] == '...' or (len(utils.get_chinese(save_title)) < len(utils.get_chinese(title))):
                     # 对title再做一次完整性检查
-                    save_title = fulfill_title(title, selector)
+                    save_title = utils.fulfill_title(title, selector)
             else:
                 if title[-3:] == '...':
-                    save_title = fulfill_title(title, selector)
+                    save_title = utils.fulfill_title(title, selector)
                 else:
                     save_title = title
             if self.main_text_pattern:
@@ -351,53 +239,7 @@ class Parser:
                 self.save_to_data({'title': save_title, 'sub_url': sub_url, 'date': date, 'main_text': main_text,
                                    'source': source, 'attachment': attachment, 'img': img})
         return frame_list
-    
-    def test_request(self, sub_links):
-        # count_for_cant_request = 0  # 用来计数，只有出现所有子链接都无法识别的情况，才使用浏览器
-        # door = max(int(len(sub_links) / 2), 3)  # 退出的阈值
-        for title in list(sub_links.keys()):
-            if 'http' not in sub_links[title][0]:
-                self.use_browser = True
-                return
-            # if (count_for_cant_request >= door) or ('http' not in sub_links[title][0]):
-            #     self.use_browser = True
-            #     error_info = u'2使用浏览器捕获数据'
-            #     self.error_info.append(error_info)
-            #     return
-            # if sub_links[title][0][-4:] in {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv'}:  # 子链接即为pdf附件的
-            #     continue
-            # request = Request(sub_links[title][0])
-            # request.get_page()
-            # if not request.text:  # 无法连接
-            #     count_for_cant_request += 1
-            #     continue
-            # else:
-            #     if self.main_text_pattern:
-            #         main_text, attachment, img = self.parse_main_text(sub_links[title][0], request.text)
-            #         if len(main_text) > 30:
-            #             self.use_browser = False
-            #             return
-            #         elif any([main_text, attachment, img]):
-            #             # 最起码要有一个捕获到数据算是认为页面请求有效
-            #             continue
-            #         else:
-            #             count_for_cant_request += 1
-            #     else:
-            #         task = parse_context.MAIN_TEXT(url=sub_links[title][0], text=request.text)
-            #         try:
-            #             result_dict = task.main()
-            #         except Exception:
-            #             count_for_cant_request += 1
-            #         else:
-            #             if int(result_dict['state']) == 1:
-            #                 # 　为1表示正常提取
-            #                 self.use_browser = False
-            #                 return  # 但凡出现能够完全正常识别的情况，直接返回
-            #             elif result_dict['attachment']:
-            #                 continue
-            #             else:
-            #                 count_for_cant_request += 1
-    
+
     async def open_page(self):
         # 网页初始化阶段
         self.page = await self.browser.newPage()
@@ -413,8 +255,8 @@ class Parser:
         await self.page.setUserAgent(
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11")
         await self.page.setRequestInterception(True)
-        self.page.on('request', request_check)  # 不加载图片和媒体等
-        self.page.on('dialog', handle_dialog)  # 关闭弹窗
+        self.page.on('request', utils.request_check)  # 不加载图片和媒体等
+        self.page.on('dialog', utils.handle_dialog)  # 关闭弹窗
         # 打开网页阶段
         await asyncio.wait([self.page.goto(self.target_url), self.page.waitForNavigation(timeout=CRAWL_SPEED['OPEN_PAGE_MAX_DELAY'])])
         if self.action_pattern:
@@ -437,12 +279,13 @@ class Parser:
                 error_info = u'1网页预执行动作点击过程出现问题 ' + str(e)
                 return False, error_info
         return True, ''
-    
+
     async def get_next_button(self, frame_list, index, page_num):
+        # 获取翻页button
         if self.next_patter:
             xpath = self.next_patter
         else:
-            xpath = from_xpath_case_to_xpath(self.xpath_case, page_num)
+            xpath = utils.from_xpath_case_to_xpath(self.xpath_case, page_num)
         for frame in [frame_list[index]] + frame_list:
             try:
                 button_list = await frame.raw_frame.xpath(xpath)
@@ -454,7 +297,7 @@ class Parser:
             except Exception:
                 self.error_info.append(u'1找不到翻页button')
         return None
-    
+
     async def get_frame(self):  # frame切换查找
         frame_list = list()
         for frame in self.page.frames:
@@ -462,7 +305,7 @@ class Parser:
             await my_frame.init()
             frame_list.append(my_frame)
         return frame_list
-    
+
     def find_final_sub_url_list(self, tmp_list):
         # 从各个frame返回的结果里寻找最终的子链接列表,index标识了存有数据表的frame标签
         max_len, index = 0, 0
@@ -479,13 +322,14 @@ class Parser:
         ret_dict = {title: final_dict[title] for title in list(final_dict.keys()) if
                     title not in self.sub_url_already_crawl}
         return ret_dict, index
-    
+
     async def turn_page(self, frame_list, page_num, item_list):
+        # 翻页
         flag = False
         if self.next_patter:
             xpath = self.next_patter
         else:
-            xpath = from_xpath_case_to_xpath(self.xpath_case, page_num)
+            xpath = utils.from_xpath_case_to_xpath(self.xpath_case, page_num)
         js_func = 'result = document.evaluate("{xpath}", document, null, XPathResult.ANY_TYPE, null);' \
                   'node = result.iterateNext();' \
                   'node.target = "";' \
@@ -504,7 +348,7 @@ class Parser:
             return True
         else:
             return False
-    
+
     async def try_to_get_sub_url(self, frame_list):
         tmp_item_list = []
         for frame in frame_list:
@@ -513,7 +357,7 @@ class Parser:
         new_sub_url, index = self.find_final_sub_url_list(tmp_item_list)
         # if self.mode == 'debug':
         return new_sub_url, index
-    
+
     def init_links(self, new_links):
         for title in list(new_links.keys()):
             self.sub_url_already_crawl[title] = new_links[title]
@@ -524,7 +368,8 @@ class Parser:
                 new_id = 1
             else:
                 new_id = max_id + 1
-            ins_link = {'id': new_id, 'gov': self.gov, 'title': title, 'pub_date': date, 'crawl_date': datetime.now().strftime('%Y-%m-%d %X'),
+            ins_link = {'id': new_id, 'gov': self.gov, 'title': title, 'pub_date': date,
+                        'crawl_date': datetime.now().strftime('%Y-%m-%d %X'),
                         'sub_url': href, 'zupei_type': self.zupei_type, 'source': '', 'loc_id': self.loc_id, 'config_id': self.config_id}
             if self.mode == "debug":
                 print(ins_link)
@@ -541,10 +386,10 @@ class Parser:
                                  'source_pattern': self.source_pattern,
                                  'title_pattern': self.title_pattern}
                     self.db_redis.sadd('links', str(ins_redis))
-                    wait_redis(self.db_redis)
+                    utils.wait_redis(self.db_redis)
                 else:
                     continue
-    
+
     async def manager(self):
         # 　返回两个值：是否运行成功，翻页页码数
         # 打开页面
@@ -554,6 +399,7 @@ class Parser:
             return False, 0  # 无法打开页面
         # 获取当前页面子链接
         retry_times = 0  # 轮询计数
+        use_browser = False  # 控制是否用浏览器解析子链接
         i = 0  # 循环计数
         while i < self.max_page:
             i += 1
@@ -587,13 +433,13 @@ class Parser:
                     retry_times = 0
             if i == 1:  # 进入到测试环节
                 # 只要还没找到xpath_case, 就寻找一遍，注意寻找的时候遵循原则先从数据框开始
-                self.xpath_case = find_xpath_case_in_frames(frame_list, index)
+                self.xpath_case = utils.find_xpath_case_in_frames(frame_list, index)
                 try:
-                    self.test_request(new_sub_url)
+                    use_browser = utils.test_request(new_sub_url)
                 except Exception as e:
                     error_info = u'1检测解析链接方法时出现问题 ' + str(e)
                     self.error_info.append(error_info)
-                    self.use_browser = False
+                    use_browser = False
             # 从数据库中过滤掉重复的
             for title in list(new_sub_url.keys()):
                 if title in self.sub_url_in_db:
@@ -606,7 +452,7 @@ class Parser:
             elif self.mode == 'debug':
                 print("第{}页".format(str(i)))
             try:
-                if self.use_browser:
+                if use_browser:
                     frame_list = await self.parse_detail(new_sub_url, frame_list, index)
                 else:
                     self.init_links(new_sub_url)

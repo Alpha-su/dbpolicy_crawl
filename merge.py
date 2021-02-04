@@ -1,9 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# @Time    : 2021/2/4 下午4:56
+# @Author  : Alphasu
+# @Function: 一些合并时候用到的临时代码
 import csv
-from pprint import pprint
-from R2 import Request
+from request_tools import Request
 import database
-from urllib.parse import urlparse
-import os
 import parse_context
 
 

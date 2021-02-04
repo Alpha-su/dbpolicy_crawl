@@ -1,4 +1,8 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# @Time    : 2021/2/4 下午4:56
+# @Author  : Alphasu
+# @Function: 利用request发起请求的工具包
 import requests
 import chardet
 import asyncio

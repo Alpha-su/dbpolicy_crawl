@@ -1,6 +1,8 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from pprint import pprint
-
+# @Time    : 2021/2/4 下午4:56
+# @Author  : Alphasu
+# @Function: 数据库操作工具包
 import pymysql
 # import pymongo
 
