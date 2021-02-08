@@ -25,16 +25,17 @@
 
 ```python
 |-dbpolicy_crawl
-|--begin.py           # 爬虫程序入口文件
-|--config.py          # 所有配置信息
-|--database.py        # 操作数据库的工具文件
-|--request_tools.py   # 发起request请求的工具文件
-|--utils.py           # 所有软件运行中需要用到的工具代码
-|--schedule.py		 # 主要的功能模块，实现爬虫调度
-|--frame.py			 # 解析网页frame
-|--parse_detail.py	 # 解析子链接
-|--parse_context.py	 # 网页正文内容的自动化提取
-|--README.md			 # readme文件
+|--begin.py               # 爬虫程序入口文件
+|--config.py              # 所有配置信息
+|--database.py            # 操作数据库的工具文件
+|--request_tools.py       # 发起request请求的工具文件
+|--utils.py               # 所有软件运行中需要用到的工具代码
+|--schedule.py	          # 主要的功能模块，实现爬虫调度
+|--frame.py               # 解析网页frame
+|--parse_detail.py        # 解析子链接
+|--parse_context.py       # 网页正文内容的自动化提取
+|--tmp                    # 存放一些平时小任务的工作代码
+|--README.md	          # readme文件
 ```
 
 ## 5.下一步计划
