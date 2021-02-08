@@ -176,8 +176,8 @@ def init_redis(machine_name="dbpolicy"):
     return db_r
 
 
-def init_mysql(machine_name="dbpolicy"):
-    return database.Mysql(MYSQL["user"], MYSQL["password"], MYSQL["database"], host=MYSQL[machine_name])
+def init_mysql(machine_name="dbpolicy", use_flow=False):
+    return database.Mysql(MYSQL["user"], MYSQL["password"], MYSQL["database"], host=MYSQL[machine_name], use_flow=use_flow)
 
 
 def remove_js_css(content):
@@ -327,3 +327,30 @@ async def get_content(frame, retries=0):
         except NetworkError:
             await asyncio.sleep(1)
             return await get_content(frame, retries + 1)
+
+
+def is_words_in_string(words_set, string):
+    """
+    判断某个字符串中是否包含某个字符集
+    :param words_set: 字符集
+    :param string: 字符串
+    :return: True or False
+    """
+    if not (words_set and string):
+        return False
+    else:
+        for word in words_set:
+            if word in string:
+                return True
+    return False
+
+
+def record_times(times, limit=1000):
+    """
+    在循环中，根据一定的循环次数进行报数
+    :param times: 循环次数
+    :param limit: 报数的阈值，默认每循环1000次进行报数
+    :return: None
+    """
+    if times % limit == 0:
+        print("循环进行到第 {} 次".format(str(times)))

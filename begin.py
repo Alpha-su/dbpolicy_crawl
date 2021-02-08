@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2021/2/4 下午4:56
 # @Author  : Alphasu
-# @Function: 爬虫程序启动文件，主要实现任务分发和多进程、协程爬取
+# @Function: 爬虫程序启动文件，主要实现任务分发和多进程、协程爬取s
 from aiomultiprocess import Pool
 import asyncio
 from scheduler import Parser
