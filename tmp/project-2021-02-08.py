@@ -22,5 +22,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    print(ZupeiType.classification("中共教育部党组关于中国农业大学第二届党委和纪委候选人组成方案的批复"))
+    main()
+    # print(ZupeiType.classification("中共教育部党组关于中国农业大学第二届党委和纪委候选人组成方案的批复"))

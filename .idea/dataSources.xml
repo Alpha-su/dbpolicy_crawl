@@ -8,5 +8,12 @@
       <jdbc-url>jdbc:mysql://121.36.22.40:3306/dbpolicy_web</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="alphasu@localhost" uuid="d0fe7ee3-68f3-4cd4-81a3-292fdfcb51c7">
+      <driver-ref>mysql.8</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
+      <jdbc-url>jdbc:mysql://localhost:3306</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

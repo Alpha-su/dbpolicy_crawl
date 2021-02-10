@@ -185,5 +185,5 @@ def check_redis():
 
 if __name__ == '__main__':
     # manage()
-    check_redis()
-    # asyncio.run(main())
+    # check_redis()
+    asyncio.run(main())
