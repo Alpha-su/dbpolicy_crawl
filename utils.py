@@ -15,6 +15,7 @@ from pyppeteer import launch
 from pyppeteer.errors import NetworkError
 import database
 from config import CRAWL_SPEED, BROWER, MYSQL, REDIS
+from loguru import logger
 
 
 async def init_browser():
@@ -23,15 +24,23 @@ async def init_browser():
     return browser
 
 
-def load_config_file(db):
+def load_config_file(db, mode):
     # 为了便于断点重启而进行的从数据库中获取还没运行的文件
-    pattern_list = db.select('api_config')
+    pattern_list = db.select('api_config', condition='is_active=1')
     tmp = db.select('api_status', target='config_id', fetch_one=False)
     if tmp:
         already_solved = set(item['config_id'] for item in tmp)
     else:
         already_solved = set()
     ret_list = [dict_ for dict_ in pattern_list if dict_['id'] not in already_solved]
+    if len(ret_list) == 0 and mode == 'update':
+        logger.success('所有的网站本轮爬取完成，开始下一轮爬取')
+        db.exec_sql('truncate api_status')
+        return load_config_file(db, mode)
+    elif len(ret_list) == 0:
+        logger.success("所有的网站已经全部爬取完毕，程序退出")
+    else:
+        logger.info('本轮爬取网站数量：{}'.format(len(ret_list)))
     return ret_list
 
 

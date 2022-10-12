@@ -376,7 +376,7 @@ class Parser:
             self.sub_url_already_crawl[title] = new_links[title]
             href = new_links[title][0]
             date = new_links[title][1]
-            max_id = self.db.select('api_links', 'max(id)', fetch_one=True)['max(id)']
+            # max_id = self.db.select('api_links', 'max(id)', fetch_one=True)['max(id)']
             # if not max_id:
             #     new_id = 1
             # else:
@@ -391,15 +391,7 @@ class Parser:
                 res = self.db.insert_one('api_links', ins_link)
                 if res:
                     self.file_count += 1
-                    ins_redis = {'link_id': new_id,
-                                 'title': title,
-                                 'date': date,
-                                 'sub_url': href,
-                                 'main_text_pattern': self.main_text_pattern,
-                                 'date_pattern': self.date_pattern,
-                                 'source_pattern': self.source_pattern,
-                                 'title_pattern': self.title_pattern}
-                    self.db_redis.sadd('links', str(ins_redis))
+                    self.db_redis.sadd('links', str(href))
                     utils.wait_redis(self.db_redis)
                 else:
                     continue
@@ -423,7 +415,7 @@ class Parser:
             # 寻找翻页和子链接
             try:
                 new_sub_url, index = await self.try_to_get_sub_url(frame_list)
-                print(f"{self.target_url}从第{i}页提取到{len(new_sub_url)}条", new_sub_url)
+                print(f"{self.target_url}从第{i}页提取到{len(new_sub_url)}条")
                 sub_urls_copy = copy.deepcopy(new_sub_url)
             except Exception as e:
                 error_info = u'1获取子链接过程出错' + str(e)
@@ -462,6 +454,7 @@ class Parser:
                     new_sub_url.pop(title)
             if self.mode == 'update':  # 如果是增量更新模式的话可以直接退出
                 if not new_sub_url:
+                    print(f"{self.target_url}整页无新增子链接，提前退出")
                     return True, i
             elif self.mode == 'debug':
                 print("第{}页".format(str(i)))

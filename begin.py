@@ -16,30 +16,25 @@ async def page_solver(config_list):
     db = init_mysql()
     browser = await init_browser()
     for config in config_list:
-        print('begin to process:{}'.format(config['target_url']))
+        logger.info('begin to process:{}'.format(config['target_url']))
         parser = Parser(config, browser, db=db, mode=CRAWL_SPEED['MODE'])
         try:
             state, page_num = await parser.manager()
         except Exception as e:
-            error_info = u'1整个解析过程存在问题 ' + str(e)
-            sql = "update api_status set status=4, pages='{}', counts='{}', error_info='{}' where config_id='{}'".\
-                format(str(0), str(0), str(error_info), str(config['id']))
+            logger.error(f"{config['target_url']}整个解析过程异常终止" + str(e))
         else:
             error_info = ','.join(parser.error_info)
             if state:
-                sql = "update api_status set status=3, pages='{}', counts='{}', error_info='{}' \
-                      where config_id='{}'".format(page_num, parser.file_count, error_info, config['id'])
+                logger.success(f"{config['target_url']}解析完成，共解析{page_num}页")
             else:
-                sql = "update api_status set status=4, pages='{}', counts='{}', error_info='{}' \
-                      where config_id='{}'".format(page_num, parser.file_count, error_info, config['id'])
-        # db.exec_sql(sql)
+                logger.warning(f"{config['target_url']}解析中存在异常: {error_info}")
         db.insert_one('api_status', {'status': 2, 'pages': 0, 'counts': 0, 'error_info': '', 'config_id': config['id']})
     await browser.close()
 
 
 async def main():
     mysql_db = init_mysql()
-    config_dli = load_config_file(mysql_db)
+    config_dli = load_config_file(mysql_db, CRAWL_SPEED['MODE'])
     config_list = split_task(config_dli)
     async with Pool() as pool:
         await pool.map(page_solver, config_list)

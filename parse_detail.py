@@ -11,6 +11,7 @@ import parse_context
 from scrapy import Selector
 import asyncio
 from utils import remove_js_css
+from loguru import logger
 
 
 def parse_main_text(url, selector2, main_text_pattern):
@@ -143,22 +144,27 @@ async def handle_sub_url(task_dict, db):
     }
     if task_dict['sub_url'][-4:] in {'.pdf', '.doc', '.docx', '.txt'}:
         result_dict['attachment'] = task_dict['sub_url']
+        rank = utils.get_rank(result_dict)
     else:
         request = request_tools.Request(url=task_dict['sub_url'])
         await request.get_page_async()
         content = request.text
-        print(task_dict['sub_url'], request.status_info)
+        # print(task_dict['sub_url'], request.status_info)
         if content:  # 连接成功
             result_dict['main_text'], result_dict['attachment'], result_dict['img'], result_dict['title'], result_dict['date'] = \
                 parse(content, db, task_dict['sub_url'], task_dict['main_text_pattern'], task_dict['date_pattern'],
                       task_dict['source_pattern'], task_dict['title_pattern'], task_dict['link_id'], task_dict['title'], task_dict['date'])
-    rank = utils.get_rank(result_dict)
+        rank = utils.get_rank(result_dict)
+        if request.status_info == '200':
+            logger.success(f"访问{task_dict['sub_url']}成功, 文本完整性等级为{rank}")
+        else:
+            logger.warning(f"访问{task_dict['sub_url']}失败, 错误代码{request.status_info}")
     result_dict['rank'] = rank
     save_data(db, result_dict)
 
 
 async def manage(task_id):
-    print("task %s is running" % task_id)
+    logger.info("task %s is running" % task_id)
     db_web = utils.init_mysql()
     db_r = utils.init_redis()
     while True:
@@ -166,7 +172,7 @@ async def manage(task_id):
             # lpop 获取队列最左边的数据，并且从队列删除这个数据，所以，这个任务可以避免被多台服务器都去执行
             task_info = db_r.spop('links')
         except Exception as e:
-            print(str(e))
+            logger.exception(e)
             await asyncio.sleep(30)
             db_r = utils.init_redis()
             continue
@@ -175,6 +181,8 @@ async def manage(task_id):
             # 将字符串转换成字典，也就是解析任务
             task_dict = db_web.select('api_links', 'id,title,pub_date,sub_url,config_id', condition="sub_url='{}'".format(task_info), fetch_one=True)
             if not task_dict:
+                logger.error(f"任务{task_info}不存在")
+                await asyncio.sleep(300)
                 continue
             config_dict = db_web.select('api_config', 'main_text_pattern, date_pattern, source_pattern, title_pattern', 'id=%s' % str(task_dict['config_id']), fetch_one=True)
             task_dict['link_id'] = task_dict['id']
@@ -190,7 +198,7 @@ async def manage(task_id):
             await handle_sub_url(task_dict, db_web)
             # db_r.sadd('link_id', task_info)
         else:
-            await asyncio.sleep(30)
+            await asyncio.sleep(300)
 
 
 async def main():
@@ -203,28 +211,21 @@ def check_redis():
     print(db_r.scard('links'))
 
 
+def fulfill_task_queue():
+    db = utils.init_mysql()
+    db_r = utils.init_redis()
+    tasks = db.select('api_links', 'sub_url',
+                      "id not in (select links_id from api_details)",
+                      fetch_one=False)
+    for i, task_dict in enumerate(tasks):
+        if i % 1000 == 0:
+            print(i)
+        db_r.sadd('links', str(task_dict['sub_url']))
+
+
 if __name__ == '__main__':
     # manage()
     # check_redis()
     # asyncio.run(main())
-    # db = utils.init_mysql()
-    # db_r = utils.init_redis()
-    # tasks = db.select('api_links', 'sub_url', "id not in (select links_id from api_details)", fetch_one=False)
-    # for i, task_dict in enumerate(tasks):
-        # if i % 1000 == 0:
-        #     print(i)
-        # config_dict = db.select('api_config', 'main_text_pattern, date_pattern, source_pattern, title_pattern', 'id=%s' % task_dict['config_id'], fetch_one=True)
-        # task_dict['link_id'] = task_dict['id']
-        # task_dict['date'] = task_dict['pub_date'].strftime('%Y-%m-%d')
-        # task_dict['main_text_pattern'] = config_dict['main_text_pattern']
-        # task_dict['date_pattern'] = config_dict['date_pattern']
-        # task_dict['source_pattern'] = config_dict['source_pattern']
-        # task_dict['title_pattern'] = config_dict['title_pattern']
-        # task_dict.pop('id')
-        # task_dict.pop('config_id')
-        # task_dict.pop('pub_date')
-        # if i % 1000 == 0:
-        #     print(i)
-        # db_r.sadd('links', str(task_dict['sub_url']))
     # utils.wait_redis(db_r)
     asyncio.run(main())

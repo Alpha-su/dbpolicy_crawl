@@ -64,12 +64,16 @@ class Mysql:
 
     def get_conn(self):
         try:
-            return self.pool.get(timeout=self.conn_size)
+            conn = self.pool.get(timeout=self.conn_size)
+            conn.ping(reconnect=True)
+            return conn
         except Empty:
             if self.conn_size < self.max_conn:
                 self.create_conn()
                 self.conn_size *= 2
-            return self.pool.get()
+            conn = self.pool.get()
+            conn.ping(reconnect=True)
+            return conn
 
     def insert_one(self, table, data):
         """
@@ -140,7 +144,7 @@ class Mysql:
             else:
                 return cursor.fetchall()
         except Exception as e:
-            print("Mysql error in select: " + str(e))
+            print(f"Mysql error in {sql}: " + str(e))
             return None
         finally:
             cursor.close()
@@ -172,5 +176,5 @@ class Mysql:
 if __name__ == '__main__':
     from utils import init_mysql
     db = init_mysql()
-    rst = db.select('api_links', target='title, sub_url', condition='loc_id="{}"'.format(153))
+    rst = db.select('api_links', target='title, sub_url', condition='loc_id="{}"'.format(153000))
     print(rst)
