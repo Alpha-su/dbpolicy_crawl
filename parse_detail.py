@@ -79,7 +79,7 @@ def parse_struct_info(selector0, date_pattern, source_pattern, title_pattern):
 
 def update_db(db, id_, column, value):
     sql = "update api_links set {}='{}' where id='{}'".format(column, value, id_)
-    db.update(sql)
+    db.exec_sql(sql)
     # 这里要为之后预留rank变更的接口
 
 
@@ -162,13 +162,33 @@ async def manage(task_id):
     db_web = utils.init_mysql()
     db_r = utils.init_redis()
     while True:
-        # lpop 获取队列最左边的数据，并且从队列删除这个数据，所以，这个任务可以避免被多台服务器都去执行
-        task_info = db_r.spop('links')
+        try:
+            # lpop 获取队列最左边的数据，并且从队列删除这个数据，所以，这个任务可以避免被多台服务器都去执行
+            task_info = db_r.spop('links')
+        except Exception as e:
+            print(str(e))
+            await asyncio.sleep(30)
+            db_r = utils.init_redis()
+            continue
         # 如果 队列中没有任务数据，此时在 python 中返回的是 None
         if task_info:
             # 将字符串转换成字典，也就是解析任务
-            task_dict = eval(task_info)
+            task_dict = db_web.select('api_links', 'id,title,pub_date,sub_url,config_id', condition="sub_url='{}'".format(task_info), fetch_one=True)
+            if not task_dict:
+                continue
+            config_dict = db_web.select('api_config', 'main_text_pattern, date_pattern, source_pattern, title_pattern', 'id=%s' % str(task_dict['config_id']), fetch_one=True)
+            task_dict['link_id'] = task_dict['id']
+            task_dict['date'] = task_dict['pub_date'].strftime('%Y-%m-%d') if task_dict['pub_date'] else ''
+            task_dict['main_text_pattern'] = config_dict['main_text_pattern']
+            task_dict['date_pattern'] = config_dict['date_pattern']
+            task_dict['source_pattern'] = config_dict['source_pattern']
+            task_dict['title_pattern'] = config_dict['title_pattern']
+            task_dict.pop('id')
+            task_dict.pop('config_id')
+            task_dict.pop('pub_date')
+            # print(task_dict)
             await handle_sub_url(task_dict, db_web)
+            # db_r.sadd('link_id', task_info)
         else:
             await asyncio.sleep(30)
 
@@ -186,4 +206,25 @@ def check_redis():
 if __name__ == '__main__':
     # manage()
     # check_redis()
+    # asyncio.run(main())
+    # db = utils.init_mysql()
+    # db_r = utils.init_redis()
+    # tasks = db.select('api_links', 'sub_url', "id not in (select links_id from api_details)", fetch_one=False)
+    # for i, task_dict in enumerate(tasks):
+        # if i % 1000 == 0:
+        #     print(i)
+        # config_dict = db.select('api_config', 'main_text_pattern, date_pattern, source_pattern, title_pattern', 'id=%s' % task_dict['config_id'], fetch_one=True)
+        # task_dict['link_id'] = task_dict['id']
+        # task_dict['date'] = task_dict['pub_date'].strftime('%Y-%m-%d')
+        # task_dict['main_text_pattern'] = config_dict['main_text_pattern']
+        # task_dict['date_pattern'] = config_dict['date_pattern']
+        # task_dict['source_pattern'] = config_dict['source_pattern']
+        # task_dict['title_pattern'] = config_dict['title_pattern']
+        # task_dict.pop('id')
+        # task_dict.pop('config_id')
+        # task_dict.pop('pub_date')
+        # if i % 1000 == 0:
+        #     print(i)
+        # db_r.sadd('links', str(task_dict['sub_url']))
+    # utils.wait_redis(db_r)
     asyncio.run(main())

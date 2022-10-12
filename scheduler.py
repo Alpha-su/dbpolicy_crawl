@@ -14,6 +14,18 @@ from config import CRAWL_SPEED
 import utils
 
 
+async def request_check(req):
+    # 请求过滤
+    if req.resourceType in ['image', 'media']:
+        await req.abort()
+    else:
+        await req.continue_()
+
+
+async def handle_dialog(dialog):
+    await dialog.dismiss()
+
+
 class Parser:
     def __init__(self, config, browser, db=None, mode='complete'):
         self.config_id = config['id']
@@ -36,21 +48,22 @@ class Parser:
         self.sub_url_already_crawl = dict()  # 缓存本网站已经进行子链接解析的网页，包括完成了的和未完成的
         self.file_count = 0  # 统计该网页成功解析的子链接数
         self.error_info = list()  # 记录曾出现过的错误信息
-        self.sub_url_in_db = self.get_sub_url_in_db()
+        self.sub_url_in_db, self.title_in_db = self.get_data_in_db()
         self.db_redis = utils.init_redis()
         self.xpath_case = 0  # 翻页规则
 
-    def get_sub_url_in_db(self):
+    def get_data_in_db(self):
         # 为了避免重复爬取，预加载已经爬取的内容
-        ret_set = set()
-        tmp_result = self.db.select('api_links', target='title', condition='loc_id="{}"'.format(self.loc_id))
+        sub_url_set, title_set = set(), set()
+        tmp_result = self.db.select('api_links', target='sub_url, title', condition='loc_id="{}"'.format(self.loc_id))
         if tmp_result:
             for item in tmp_result:
                 if item:
-                    ret_set.add(item['title'])
-            return ret_set
+                    sub_url_set.add(item['sub_url'])
+                    title_set.add(item['title'])
+            return sub_url_set, title_set
         else:
-            return ret_set
+            return sub_url_set, title_set
 
     async def wait_for_change(self, item_list, max_retries=0):
         retries_times = 0
@@ -254,9 +267,9 @@ class Parser:
             '''() =>{ Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] }); }''')
         await self.page.setUserAgent(
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11")
-        await self.page.setRequestInterception(True)
-        self.page.on('request', utils.request_check)  # 不加载图片和媒体等
-        self.page.on('dialog', utils.handle_dialog)  # 关闭弹窗
+        # await self.page.setRequestInterception(True)
+        # self.page.on('request', request_check)  # 不加载图片和媒体等
+        # self.page.on('dialog', handle_dialog)  # 关闭弹窗
         # 打开网页阶段
         await asyncio.wait([self.page.goto(self.target_url), self.page.waitForNavigation(timeout=CRAWL_SPEED['OPEN_PAGE_MAX_DELAY'])])
         if self.action_pattern:
@@ -364,15 +377,16 @@ class Parser:
             href = new_links[title][0]
             date = new_links[title][1]
             max_id = self.db.select('api_links', 'max(id)', fetch_one=True)['max(id)']
-            if not max_id:
-                new_id = 1
-            else:
-                new_id = max_id + 1
-            ins_link = {'id': new_id, 'gov': self.gov, 'title': title, 'pub_date': date,
+            # if not max_id:
+            #     new_id = 1
+            # else:
+            #     new_id = max_id + 1
+            ins_link = {'gov': self.gov, 'title': title, 'pub_date': date,
                         'crawl_date': datetime.now().strftime('%Y-%m-%d %X'),
                         'sub_url': href, 'zupei_type': self.zupei_type, 'source': '', 'loc_id': self.loc_id, 'config_id': self.config_id}
             if self.mode == "debug":
                 print(ins_link)
+                # res = self.db.insert_one('api_links', ins_link)
             else:
                 res = self.db.insert_one('api_links', ins_link)
                 if res:
@@ -391,7 +405,7 @@ class Parser:
                     continue
 
     async def manager(self):
-        # 　返回两个值：是否运行成功，翻页页码数
+        # 返回两个值：是否运行成功，翻页页码数
         # 打开页面
         state, error_info = await self.open_page()
         if not state:
@@ -402,14 +416,14 @@ class Parser:
         use_browser = False  # 控制是否用浏览器解析子链接
         i = 0  # 循环计数
         while i < self.max_page:
+            # await self.page.screenshot({'path': f'example_{i}.png'})
             i += 1
             # 获取frame列表
             frame_list = await self.get_frame()
             # 寻找翻页和子链接
             try:
                 new_sub_url, index = await self.try_to_get_sub_url(frame_list)
-                print(new_sub_url)
-                print(len(new_sub_url))
+                print(f"{self.target_url}从第{i}页提取到{len(new_sub_url)}条", new_sub_url)
                 sub_urls_copy = copy.deepcopy(new_sub_url)
             except Exception as e:
                 error_info = u'1获取子链接过程出错' + str(e)
@@ -419,10 +433,10 @@ class Parser:
                 if not new_sub_url:
                     # 翻页前后没变化
                     i -= 1  # 避免页面重复增加
-                    if retry_times < 50:
+                    if retry_times < 30:
                         retry_times += 1
-                        if (i > 0) and (25 < retry_times < 35):
-                            c_state = await self.turn_page(frame_list, i + (retry_times - 25), sub_urls_copy)
+                        if (i > 0) and (15 < retry_times < 25):
+                            c_state = await self.turn_page(frame_list, i + (retry_times - 10), sub_urls_copy)
                             if not c_state:
                                 return True, i + 1
                         await asyncio.sleep(1)
@@ -437,12 +451,12 @@ class Parser:
                 try:
                     use_browser = utils.test_request(new_sub_url)
                 except Exception as e:
-                    error_info = u'1检测解析链接方法时出现问题 ' + str(e)
+                    error_info = u'1检测解析链接方法时出现问题' + str(e)
                     self.error_info.append(error_info)
                     use_browser = False
             # 从数据库中过滤掉重复的
             for title in list(new_sub_url.keys()):
-                if title in self.sub_url_in_db:
+                if (new_sub_url[title][0] in self.sub_url_in_db) or (title in self.title_in_db):
                     # 从数据库删除的同时一定要记得加入already_crawl,避免死循环
                     self.sub_url_already_crawl[title] = new_sub_url[title]
                     new_sub_url.pop(title)

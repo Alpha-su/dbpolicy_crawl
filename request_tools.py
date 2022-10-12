@@ -28,7 +28,7 @@ class Request:
     async def get_page_async(self):
         session = aiohttp.ClientSession()
         headers = {
-            'User-Agent': self.ua.random,
+            'User-Agent': "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.75 Safari/537.36",
         }
         if self.cookie:
             headers['cookie'] = self.cookie
@@ -61,10 +61,10 @@ class Request:
                 if retry == 0:
                     response = requests.get(self.url, headers=headers, timeout=self.timeout, allow_redirects=self.allow_redirect)
                 else:
-                    proxy = {'http': get_proxy().get("proxy")}
-                    print(proxy)
+                    # proxy = {'http': get_proxy().get("proxy")}
+                    # print(proxy)
                     response = requests.get(self.url, headers=headers, timeout=self.timeout,
-                                            allow_redirects=self.allow_redirect, proxies=proxy)
+                                            allow_redirects=self.allow_redirect)
                 if response and response.status_code == 200:
                     encode = chardet.detect(response.content).get('encoding', 'utf-8')  # 通过第3方模块来自动提取网页的编码
                     self.text = response.content.decode(encode, 'ignore')

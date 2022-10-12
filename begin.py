@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2021/2/4 下午4:56
 # @Author  : Alphasu
-# @Function: 爬虫程序启动文件，主要实现任务分发和多进程、协程爬取s
+# @Function: 爬虫程序启动文件，主要实现任务分发和多进程、协程爬取
+from loguru import logger
+from datetime import datetime
 from aiomultiprocess import Pool
 import asyncio
 from scheduler import Parser
@@ -16,7 +18,6 @@ async def page_solver(config_list):
     for config in config_list:
         print('begin to process:{}'.format(config['target_url']))
         parser = Parser(config, browser, db=db, mode=CRAWL_SPEED['MODE'])
-        db.insert_one('api_status', {'status': 2, 'pages': 0, 'counts': 0, 'error_info': '', 'config_id': config['id']})
         try:
             state, page_num = await parser.manager()
         except Exception as e:
@@ -31,7 +32,8 @@ async def page_solver(config_list):
             else:
                 sql = "update api_status set status=4, pages='{}', counts='{}', error_info='{}' \
                       where config_id='{}'".format(page_num, parser.file_count, error_info, config['id'])
-        db.update(sql)
+        # db.exec_sql(sql)
+        db.insert_one('api_status', {'status': 2, 'pages': 0, 'counts': 0, 'error_info': '', 'config_id': config['id']})
     await browser.close()
 
 
@@ -44,11 +46,11 @@ async def main():
 
 
 async def debug():
-    print('debug!')
+    logger.info("Begin to run in debug mode")
     db = init_mysql()
-    config_id = 514
+    config_id = 1711
     config = db.select('api_config', condition='id="{}"'.format(config_id), fetch_one=True)
-    print(config)
+    logger.debug(config)
     browser = await init_browser()
     parser = Parser(config, browser, db=db, mode=CRAWL_SPEED['MODE'])
     try:

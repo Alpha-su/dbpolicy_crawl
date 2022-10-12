@@ -106,18 +106,6 @@ def test_request(sub_links):
         #                 count_for_cant_request += 1
 
 
-async def request_check(req):
-    # 请求过滤
-    if req.resourceType in ['image', 'media']:
-        await req.abort()
-    else:
-        await req.continue_()
-
-
-async def handle_dialog(dialog):
-    await dialog.dismiss()
-
-
 def wait_redis(db_redis, max_length=CRAWL_SPEED['Redis_Stack'], sleep_gap=CRAWL_SPEED['Redis_Delay']):
     while True:
         len_ = db_redis.scard('links')
@@ -177,7 +165,7 @@ def init_redis(machine_name="dbpolicy"):
 
 
 def init_mysql(machine_name="dbpolicy", use_flow=False):
-    return database.Mysql(MYSQL["user"], MYSQL["password"], MYSQL["database"], host=MYSQL[machine_name], use_flow=use_flow)
+    return database.Mysql(MYSQL)
 
 
 def remove_js_css(content):

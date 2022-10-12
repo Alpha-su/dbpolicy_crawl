@@ -89,7 +89,7 @@ class Mysql:
             cursor.execute(sql, tuple(data.values()))
             return True
         except Exception as e:
-            print("Mysql error in insert_one: " + e)
+            print("Mysql error in insert_one: " + str(e))
             return False
         finally:
             cursor.close()
@@ -111,7 +111,7 @@ class Mysql:
             cursor.executemany(sql, tuple(tuple(data.values()) for data in raw_data_list))
             return True
         except Exception as e:
-            print("Mysql error in insert_many: " + e)
+            print("Mysql error in insert_many: " + str(e))
             return False
         finally:
             cursor.close()
@@ -140,7 +140,7 @@ class Mysql:
             else:
                 return cursor.fetchall()
         except Exception as e:
-            print("Mysql error in select: " + e)
+            print("Mysql error in select: " + str(e))
             return None
         finally:
             cursor.close()
@@ -158,7 +158,7 @@ class Mysql:
             cursor.execute(sql)
             return True
         except Exception as e:
-            print("Mysql error in sql: {}, error is: {}".format(str(sql), e))
+            print("Mysql error in sql: {}, error is: {}".format(str(sql), str(e)))
             return False
         finally:
             cursor.close()
@@ -170,12 +170,7 @@ class Mysql:
 
 
 if __name__ == '__main__':
-    # tests()
-    # q = Queue(1)
-    # q.put(123)
-    # q.get()
-    # q.put(123)
-    logging.basicConfig(filename="test_log.log", level=logging.WARNING)
-    logging.warning("ok")
-    logging.info("log ok")
-    logging.debug("this is a debug")
+    from utils import init_mysql
+    db = init_mysql()
+    rst = db.select('api_links', target='title, sub_url', condition='loc_id="{}"'.format(153))
+    print(rst)
